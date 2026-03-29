@@ -1,0 +1,2 @@
+# SafeSeniors
+EdgeAI Project
