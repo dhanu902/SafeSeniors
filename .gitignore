@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+ENV/
+.env/
+
+# Data (large files)
+data/
+*.csv
+*.xlsx
+
+# Models
+models/*.pkl
+models/*.h5
+models/*.pt
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node (frontend)
+node_modules/
+build/
+dist/
+
+# Environment variables
+.env
