@@ -39,3 +39,22 @@ dist/
 
 # Environment variables
 .env
+
+# Android
+android-app/**/build/
+android-app/.gradle/
+android-app/local.properties
+android-app/*.iml
+
+# Mac
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+ENV/
+venv/
+
+# Models (optional)
+*.h5
+*.pkl
