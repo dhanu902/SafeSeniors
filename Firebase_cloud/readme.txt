@@ -1,1 +1,1 @@
-
+in the same file folder . changed the logic to send alert to the firebsase . to do this chnaged the kotlin file and added the logic there , add new dependancies as required . downloaded the json file from firebase and add that in the current project . firebase is intergrsted with the mobile appilication where the model runs and gets predtions then the alert will save in the firebase
