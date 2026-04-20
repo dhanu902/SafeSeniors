@@ -495,7 +495,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             else -> "Unknown"
         }
 
-        // --- FIREBASE LOGIC ---
+        
         // ONLY send data to Firebase if it is a Fall (0)
         // The lastLoggedState check ensures we don't spam the database if the fall lasts for a few frames
         if (stateIndex == 0 && lastLoggedState != 0) {
