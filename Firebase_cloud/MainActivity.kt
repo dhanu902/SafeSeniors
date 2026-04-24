@@ -349,6 +349,45 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     }
 
+// ==========================================
+    //  NEW: CLOUD LISTENER FUNCTION
+    // ==========================================
+    private fun listenForCloudAlerts() {
+        db.collection("cloud_alerts")
+            .whereEqualTo("targetDeviceId", "Android_Device_1")
+            .addSnapshotListener { snapshots, e ->
+                if (e != null) {
+                    println(" Listen failed: $e")
+                    return@addSnapshotListener
+                }
+
+                if (snapshots != null && !snapshots.isEmpty) {
+                    for (document in snapshots.documentChanges) {
+                        if (document.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                            val message = document.document.getString("message") ?: "Unknown Alert"
+
+                            // 1. LOCK THE SCREEN
+                            isEmergencyAlertActive = true
+
+                            // 2. SHOW THE ALERT AND THE CLEAR BUTTON
+                            runOnUiThread {
+                                statusTextView.text = "☁️ CLOUD ALERT:\n$message"
+                                statusTextView.setTextColor(Color.MAGENTA)
+                                statusTextView.textSize = 28f // Make it big and obvious
+
+                                // Make the clear button visible
+                                clearAlertButton.visibility = View.VISIBLE
+                            }
+
+                            // 3. DELETE FROM CLOUD SO IT DOESN'T RE-TRIGGER LATER
+                            document.document.reference.delete()
+                        }
+                    }
+                }
+            }
+    }
+
+    
     override fun onResume() {
         super.onResume()
         linearAccelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
