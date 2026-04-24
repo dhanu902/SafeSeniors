@@ -285,6 +285,8 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.view.View
+import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
@@ -308,6 +310,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var statusTextView: TextView
     private lateinit var bufferTextView: TextView
 
+    // NEW: The Clear Alert Button
+    private lateinit var clearAlertButton: Button
+
     private var latestAccel = FloatArray(3)
     private var latestGyro = FloatArray(3)
 
@@ -321,9 +326,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private val FALL_IMPACT_THRESHOLD = 8.0f
 
-    // --- FIREBASE VARIABLES ---
+    // --- FIREBASE VARIABLES & LOCKS ---
     private lateinit var db: FirebaseFirestore
-    private var lastLoggedState = -1 // Tracks what was last sent to the database
+    private var lastLoggedState = -1
+
+    // NEW: The lock variable to stop sensors from overwriting cloud alerts
+    private var isEmergencyAlertActive = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -331,11 +339,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
         statusTextView = findViewById(R.id.statusTextView)
         bufferTextView = findViewById(R.id.bufferTextView)
+        clearAlertButton = findViewById(R.id.clearAlertButton) // Initialize the button
 
         // Initialize Firebase
         db = FirebaseFirestore.getInstance()
 
-                // NEW: Start listening for Cloud Alerts immediately
+        // NEW: Start listening for Cloud Alerts immediately
         listenForCloudAlerts()
 
         // NEW: Set up what happens when the user clicks the Clear button
@@ -366,7 +375,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     }
 
-// ==========================================
+    // ==========================================
     //  NEW: CLOUD LISTENER FUNCTION
     // ==========================================
     private fun listenForCloudAlerts() {
@@ -404,7 +413,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
     }
 
-    
     override fun onResume() {
         super.onResume()
         linearAccelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
@@ -438,7 +446,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 if (timeSeriesBuffer.size >= TIMESTEPS) {
 
                     if (isPhoneStill(timeSeriesBuffer)) {
-                        lastUIState = 1 // Update state tracker
+                        lastUIState = 1
                         setUIState(1)
                     } else {
                         runInference(timeSeriesBuffer.take(TIMESTEPS))
@@ -446,7 +454,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
                     timeSeriesBuffer.subList(0, STEP_SIZE).clear()
                 } else {
-                    bufferTextView.text = "Filling Buffer: ${timeSeriesBuffer.size}/$TIMESTEPS"
+                    // Only update buffer text if no emergency is active
+                    if (!isEmergencyAlertActive) {
+                        bufferTextView.text = "Filling Buffer: ${timeSeriesBuffer.size}/$TIMESTEPS"
+                    }
                 }
             }
             Sensor.TYPE_GYROSCOPE -> {
@@ -517,16 +528,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
         }
 
-        // ==========================================
-        //  FAILSAFE 2: THE PHYSICAL REALITY CHECK
-        // ==========================================
         if (maxIndex == 0 && maxPhysicalImpact < FALL_IMPACT_THRESHOLD) {
             maxIndex = 2
         }
 
-        // ==========================================
-        //  FAILSAFE 3: YOUR STATE TRANSITION LOGIC
-        // ==========================================
         if (maxIndex == 0 && lastUIState == 1) {
             maxIndex = 2
         }
@@ -534,15 +539,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         lastUIState = maxIndex
 
         runOnUiThread {
-            bufferTextView.text = String.format("Confidences:\nFall: %.2f  Idle: %.2f\nMotion: %.2f  Step: %.2f\nMax Impact: %.2f",
-                probabilities[0], probabilities[1], probabilities[2], probabilities[3], maxPhysicalImpact)
+            // Only update backend stats on screen if no emergency is active
+            if (!isEmergencyAlertActive) {
+                bufferTextView.text = String.format("Confidences:\nFall: %.2f  Idle: %.2f\nMotion: %.2f  Step: %.2f\nMax Impact: %.2f",
+                    probabilities[0], probabilities[1], probabilities[2], probabilities[3], maxPhysicalImpact)
+            }
         }
 
         setUIState(maxIndex)
     }
 
     private fun setUIState(stateIndex: Int) {
-        // Map the integer to the actual string name
         val activityName = when (stateIndex) {
             0 -> "Fall Detected"
             1 -> "Idle"
@@ -551,39 +558,37 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             else -> "Unknown"
         }
 
-        
-        // ONLY send data to Firebase if it is a Fall (0)
-        // The lastLoggedState check ensures we don't spam the database if the fall lasts for a few frames
         if (stateIndex == 0 && lastLoggedState != 0) {
             saveToFirebase(activityName)
         }
 
-        // Always update lastLoggedState so we know what the previous state was
         lastLoggedState = stateIndex
 
         runOnUiThread {
-            when (stateIndex) {
-                0 -> {
-                    statusTextView.text = "🚨 FALL DETECTED 🚨"
-                    statusTextView.setTextColor(Color.RED)
-                }
-                1 -> {
-                    statusTextView.text = "Idle"
-                    statusTextView.setTextColor(Color.DKGRAY)
-                }
-                2 -> {
-                    statusTextView.text = "In Motion"
-                    statusTextView.setTextColor(Color.BLUE)
-                }
-                3 -> {
-                    statusTextView.text = "Stepping"
-                    statusTextView.setTextColor(Color.parseColor("#008000"))
+            // NEW: Only update the main UI text if there is NO emergency active!
+            if (!isEmergencyAlertActive) {
+                when (stateIndex) {
+                    0 -> {
+                        statusTextView.text = "🚨 FALL DETECTED 🚨"
+                        statusTextView.setTextColor(Color.RED)
+                    }
+                    1 -> {
+                        statusTextView.text = "Idle"
+                        statusTextView.setTextColor(Color.DKGRAY)
+                    }
+                    2 -> {
+                        statusTextView.text = "In Motion"
+                        statusTextView.setTextColor(Color.BLUE)
+                    }
+                    3 -> {
+                        statusTextView.text = "Stepping"
+                        statusTextView.setTextColor(Color.parseColor("#008000"))
+                    }
                 }
             }
         }
     }
 
-    // Helper function to push data to Firestore
     private fun saveToFirebase(activity: String) {
         val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault())
         val timestamp = sdf.format(Date())
@@ -598,10 +603,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         db.collection("activity_logs")
             .add(activityData)
             .addOnSuccessListener { documentReference ->
-                println("✅ DocumentSnapshot added with ID: ${documentReference.id}")
+                println(" DocumentSnapshot added with ID: ${documentReference.id}")
             }
             .addOnFailureListener { e ->
-                println("❌ Error adding document: $e")
+                println(" Error adding document: $e")
             }
     }
 
@@ -610,3 +615,4 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         return FileInputStream(fd.fileDescriptor).channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
     }
 }
+
