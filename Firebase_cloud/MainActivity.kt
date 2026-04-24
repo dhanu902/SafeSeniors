@@ -335,6 +335,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         // Initialize Firebase
         db = FirebaseFirestore.getInstance()
 
+                // NEW: Start listening for Cloud Alerts immediately
+        listenForCloudAlerts()
+
+        // NEW: Set up what happens when the user clicks the Clear button
+        clearAlertButton.setOnClickListener {
+            // Release the lock
+            isEmergencyAlertActive = false
+
+            // Hide the button again
+            clearAlertButton.visibility = View.GONE
+
+            // Reset the text size and show a temporary message (the sensors will overwrite this in a split second)
+            statusTextView.textSize = 18f
+            statusTextView.text = "Alert Cleared. Resuming detection..."
+            statusTextView.setTextColor(Color.DKGRAY)
+        }
+
         try {
             interpreter = Interpreter(loadModelFile("fall_model.tflite"))
             statusTextView.text = "Model Loaded. Gathering data..."
